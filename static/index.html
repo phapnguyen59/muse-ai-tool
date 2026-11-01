@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Muse ai tool — Tool Tạo Video AI Hàng Loạt</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css?v=1.0.25">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- =========================================================================
+       APP HEADER & KHO ẢNH THAM CHIẾU CỐ ĐỊNH (Mục 2.1 & Mục 3.1)
+       ========================================================================= -->
+  <header class="app-header">
+    <!-- Top bar: Brand, Counters, Nav Tabs, Account Pool Button -->
+    <div class="px-6 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">🎬</span>
+          <span class="text-lg font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            Muse ai tool
+          </span>
+          <span class="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+            v1.0
+          </span>
+        </div>
+
+        <button id="btnHeaderMachineId" type="button" disabled onclick="copyMachineId(event)" class="btn-secondary text-xs py-1.5 px-3" title="Copy mã máy đầy đủ">
+          <span id="headerMachineId">Mã máy: đang đọc…</span> <span aria-hidden="true">⧉</span>
+        </button>
+
+      </div>
+
+      <!-- Header Counters & Status (Mục 2.1) -->
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-4 text-xs font-medium">
+          <div class="flex items-center gap-1.5 text-sky-400">
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            <span>Đang chạy: <strong id="cntRunning" class="font-bold text-sky-300">0</strong></span>
+          </div>
+          <div class="flex items-center gap-1.5 text-slate-400">
+            <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <span>Chờ: <strong id="cntWaiting" class="font-bold text-slate-300">0</strong></span>
+          </div>
+          <div class="flex items-center gap-1.5 text-emerald-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Xong: <strong id="cntCompleted" class="font-bold text-emerald-300">0</strong></span>
+          </div>
+          <div id="connectionStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span id="txtConnectionStatus">Online</span>
+          </div>
+        </div>
+
+        <!-- Account Pool Button -->
+        <button onclick="openAccountModal()" class="btn-secondary text-xs py-2 px-3 flex items-center gap-2">
+          <span>👥</span> Quản lý tài khoản (<span id="txtAccountCount">0</span>)
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel Kho ảnh tham chiếu cố định ở header (Mục 3.1) -->
+
+  </header>
+
+  <!-- =========================================================================
+       MODULE 1: BATCH MANAGER (HÀNG ĐỢI) (Mục 4, 5, 6)
+       ========================================================================= -->
+  <main id="moduleQueue" class="queue-workspace">
+    <!-- CỘT TRÁI: Soạn Batch Prompt & Cài đặt (Mục 4) -->
+    <aside class="queue-sidebar">
+      <section id="queueControls" class="glass-panel control-panel" aria-label="Điều khiển tạo video">
+      <section class="queue-refs" aria-label="Ảnh tham chiếu">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="txtRefHeader" class="text-sm font-bold text-slate-200">Ảnh tham chiếu · 0 ảnh</h2>
+          <button type="button" onclick="openUploadModal()" class="btn-primary text-xs py-2 px-3">+ Tải ảnh tham chiếu</button>
+        </div>
+        <p class="text-xs text-slate-400">Tải ảnh lên, dùng @tag trong prompt hoặc chọn ảnh chung cho cả batch. Bấm Xóa để gỡ ảnh đã tải.</p>
+        <div class="ref-chips-scroll" id="refChipsList" tabindex="0" aria-label="Ảnh tham chiếu, cuộn ngang để xem thêm"></div>
+      </section>
+      <div class="prompt-controls">
+        <div class="prompt-heading flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <span>✍️</span> Danh sách prompt
+            </h2>
+            <!-- Badge N prompt trực tiếp (Mục 4.2 & AC-01) -->
+            <span id="badgePromptCount" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              0 prompt
+            </span>
+          </div>
+
+          <span class="prompt-split-note" title="Mỗi dòng không trống tạo một video">Mỗi dòng = 1 video</span>
+        </div>
+
+        <!-- Textarea lớn soạn prompt kèm autocomplete @tag (Mục 4.3) -->
+        <div class="relative prompt-editor">
+          <textarea id="txtBatchPrompts" rows="4"
+            class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition font-sans resize-none"
+            placeholder="Nhập hoặc dán các prompt vào đây... Ví dụ:&#10;@santa đang trượt tuyết trên đỉnh Alps vào lúc hoàng hôn, cinematic 4k&#10;@x07 bước ra từ phi thuyền không gian giữa mưa sao băng rực rỡ"
+            oninput="onPromptInput(event)"
+            onkeydown="onPromptKeyDown(event)"></textarea>
+
+          <!-- Autocomplete Dropdown khi gõ @ (Mục 4.3) -->
+          <div id="mentionDropdown" class="mention-dropdown hidden"></div>
+        </div>
+
+        <!-- Chip xác nhận tag đã gắn (Mục 4.3.4) -->
+        <div id="detectedTagsArea" class="flex flex-wrap gap-2 min-h-[24px]"></div>
+
+        <!-- Cảnh báo đỏ khi tag không tồn tại trong kho (Mục 4.3.6 & AC-03) -->
+        <div id="missingTagsWarning" class="hidden p-3 rounded-xl bg-red-950/50 border border-red-500/40 text-red-200 text-xs flex items-center gap-2">
+          <span class="text-base">⚠️</span>
+          <span id="txtMissingTagsMsg">Cảnh báo: Tag tham chiếu chưa có trong kho!</span>
+        </div>
+
+        <!-- Cài đặt áp dụng cho mỗi batch (Mục 4.4) -->
+        <div class="batch-settings grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Thời lượng:</label>
+            <select id="selDuration" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 h-[32px]">
+              <option value="5">5 giây</option>
+              <option value="10">10 giây</option>
+              <option value="15" selected>15 giây (mặc định)</option>
+              <option value="30">30 giây</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Tỉ lệ khung hình:</label>
+            <select id="selRatio" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 h-[32px]">
+              <option value="9:16" selected>9:16 · Dọc (mặc định)</option>
+              <option value="16:9">16:9 · Ngang</option>
+              <option value="1:1">1:1 · Vuông</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Số prompt chạy đồng thời:</label>
+            <div class="flex items-center gap-1.5 h-[32px]">
+              <input type="number" id="inpConcurrency" value="1" min="1" max="20" class="h-full w-full bg-slate-900 border border-slate-700 rounded-lg px-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 text-center font-bold">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-400 mb-1">Ảnh chung batch:</label>
+            <div id="batchRefPicker" class="batch-ref-picker">
+            <select id="selBatchCommonRef" hidden aria-hidden="true" tabindex="-1">
+              <option value="">(Không dùng)</option>
+            </select>
+            <button id="batchRefTrigger" type="button" class="batch-ref-trigger" role="combobox" aria-label="Ảnh chung batch" aria-haspopup="listbox" aria-expanded="false" aria-controls="batchRefOptions" onclick="toggleBatchRefPicker()">
+              <span id="batchRefLabel">(Không dùng)</span><span aria-hidden="true">⌄</span>
+            </button>
+            <div id="batchRefOptions" class="batch-ref-options hidden" role="listbox" aria-label="Chọn ảnh chung batch"></div>
+            </div>
+          </div>
+        </div>
+
+        <p id="concurrencyStatus" class="text-[10px] text-slate-400" role="status">Đang đọc cấu hình luồng…</p>
+
+        <!-- Action Buttons (Mục 5) -->
+        <div class="queue-actions">
+          <button id="btnEnqueue" onclick="enqueueCurrentBatch()" class="btn-primary flex-1 justify-center py-2.5">
+            <span>Thêm vào hàng đợi →</span>
+          </button>
+          <button id="btnProcessQueue" onclick="startDispatcher()" class="btn-primary bg-gradient-to-r from-emerald-500 to-teal-600 py-2.5 shadow-emerald-500/20">
+            <span>▶ Chạy hàng đợi</span>
+          </button>
+          <button id="btnStopQueue" onclick="stopDispatcher()" class="btn-danger py-2.5">
+            <span>⏹ Dừng tất cả</span>
+          </button>
+        </div>
+      </div>
+      </section>
+</aside>
+
+    <!-- CỘT PHẢI: Dải Trực Tiếp & Danh Sách Video (Mục 6) -->
+    <section class="queue-results" aria-label="Danh sách video">
+
+      <!-- Dải 'Đang chạy trực tiếp' — ghim trên danh sách (Mục 6.4 & AC-06) -->
+      <!-- Danh sách video: Tabs lọc, Tìm kiếm, Phân trang (Mục 6.2) -->
+      <div class="glass-panel record-panel">
+        <!-- Tabs lọc trạng thái kèm bộ đếm (Mục 6.2 & AC-10) -->
+        <div class="record-toolbar flex items-center gap-3 pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-1.5 overflow-x-auto" id="statusFilterTabs">
+            <button class="status-tab-btn active px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white" onclick="setStatusFilter('Tất cả')">
+              Tất cả <span id="fCntAll" class="ml-1 opacity-80">(0)</span>
+            </button>
+            <button class="status-tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200" onclick="setStatusFilter('Chờ')">
+              Chờ <span id="fCntWaiting" class="ml-1 opacity-80">(0)</span>
+            </button>
+            <button class="status-tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200" onclick="setStatusFilter('Đang chạy')">
+              Đang chạy <span id="fCntRunning" class="ml-1 opacity-80">(0)</span>
+            </button>
+            <button class="status-tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200" onclick="setStatusFilter('Hoàn thành')">
+              Hoàn thành <span id="fCntCompleted" class="ml-1 opacity-80">(0)</span>
+            </button>
+            <button class="status-tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200" onclick="setStatusFilter('Thất bại')">
+              Thất bại <span id="fCntFailed" class="ml-1 opacity-80">(0)</span>
+            </button>
+            <button class="status-tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200" onclick="setStatusFilter('Đã dừng')">
+              Đã dừng <span id="fCntStopped" class="ml-1 opacity-80">(0)</span>
+            </button>
+          </div>
+
+          <div class="relative record-search">
+            <input type="text" id="inpSearchJobs" placeholder="Prompt, Task ID hoặc Thread ID..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              oninput="onSearchInput()">
+            <span class="absolute left-2.5 top-2 text-slate-500 text-xs">🔍</span>
+          </div>
+          <span id="txtRecordsTotal" hidden>0 record</span>
+
+          <!-- Nút Dọn mục đã xong -->
+          <button onclick="clearFinishedJobs()" class="btn-secondary text-xs py-1.5 px-3">
+            🧹 Dọn mục đã xong
+          </button>
+        </div>
+
+        <!-- Danh sách video: mỗi dòng đúng 1 hàng (Mục 6.3 & AC-07, AC-10) -->
+        <div id="recordsScroll" class="records-scroll" tabindex="0" aria-label="Cuộn danh sách video">
+      <div id="liveRunningStrip" class="running-strip hidden">
+        <div class="flex items-center justify-between">
+          <div class="text-xs font-bold text-sky-300 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping"></span>
+            <span>ĐANG CHẠY TRỰC TIẾP (<span id="txtLiveStripCount">0</span> video)</span>
+          </div>
+          <span class="text-[11px] text-slate-400">Cập nhật mỗi 2 giây</span>
+        </div>
+        <div id="liveRunningItems" class="running-strip-items">
+          <!-- Rendered live by JS -->
+        </div>
+      </div>
+
+        <div id="videoRowsContainer" class="space-y-2">
+          <!-- Rendered by JS -->
+          <div class="text-center py-16 text-slate-500 text-sm">
+            Hàng đợi trống. Hãy nhập prompt và bấm "Thêm vào hàng đợi".
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- =========================================================================
+       MODULE 2: FLOW STUDIO — CANVAS KÉO-THẢ (Mục 7)
+       ========================================================================= -->
+  <main id="moduleStudio" class="flex-1 relative hidden">
+    <!-- Studio Header Controls (Mục 7.3) -->
+    <div class="absolute top-4 left-6 right-6 z-20 flex items-center justify-between pointer-events-none">
+      <div class="flex items-center gap-3 pointer-events-auto">
+        <h2 class="text-sm font-bold text-slate-200 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+          🎨 Muse Flow Studio — Image to video workspace
+        </h2>
+        <button onclick="addCardFromUpload()" class="btn-primary text-xs py-1.5 px-3">
+          <span>+</span> Thêm ảnh
+        </button>
+        <button onclick="generateAllStudioCards()" class="btn-primary bg-gradient-to-r from-emerald-500 to-teal-600 text-xs py-1.5 px-3 shadow-emerald-500/20">
+          <span>▶</span> Tạo tất cả
+        </button>
+      </div>
+
+      <div class="pointer-events-auto">
+        <button onclick="alert('Cài đặt Flow Studio đồng bộ cùng thời lượng và tỉ lệ mặc định với Batch Manager (Mục 7.3).')" class="btn-secondary text-xs p-2">
+          <span>⚙️</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Canvas Dot Grid Surface (Mục 7.1) -->
+    <div class="flow-canvas-container" id="flowCanvasContainer">
+      <div class="flow-canvas-viewport" id="flowCanvasViewport">
+        <!-- Draggable Studio Cards rendered here by JS -->
+      </div>
+    </div>
+
+    <!-- Zoom Controls ở góc dưới canvas (Mục 7.1) -->
+    <div class="absolute bottom-6 right-6 z-20 flex items-center gap-2 bg-slate-900/90 border border-slate-800 p-1.5 rounded-xl text-xs font-semibold shadow-xl">
+      <button onclick="zoomOut()" class="w-7 h-7 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-bold">−</button>
+      <span id="txtZoomLevel" class="w-12 text-center text-slate-300 font-mono">100%</span>
+      <button onclick="zoomIn()" class="w-7 h-7 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-bold">+</button>
+      <div class="w-px h-4 bg-slate-700 mx-1"></div>
+      <button onclick="zoomFit()" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300">Vừa khung</button>
+    </div>
+  </main>
+
+  <!-- =========================================================================
+       MODAL: UPLOAD NHIỀU ẢNH THAM CHIẾU (Mục 3.2 & AC-04)
+       ========================================================================= -->
+  <div id="modalUpload" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="glass-panel w-full max-w-xl p-6 rounded-2xl space-y-4 border border-slate-700">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>📤</span> Tải lên ảnh tham chiếu
+        </h3>
+        <button onclick="closeUploadModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-1.5">
+          Chọn file ảnh (PNG, JPG, WebP — tối đa 8 MB / file, chọn được nhiều file):
+        </label>
+        <input type="file" id="fileInputRefs" multiple accept="image/png, image/jpeg, image/webp"
+          onchange="onRefFilesSelected(event)"
+          class="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer">
+      </div>
+
+      <!-- Danh sách chờ lưu với tag tự sinh & sửa tag (Mục 3.2.4 & AC-04) -->
+      <div id="uploadPreviewList" class="max-h-64 overflow-y-auto space-y-2 py-2">
+        <!-- Rendered by JS -->
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+        <span id="txtUploadSummary" class="text-xs text-slate-400">Chưa chọn ảnh nào.</span>
+        <div class="flex gap-2">
+          <button onclick="closeUploadModal()" class="btn-secondary text-xs py-2 px-3">Hủy</button>
+          <button id="btnSaveUploadedRefs" onclick="saveSelectedRefImages()" disabled class="btn-primary text-xs py-2 px-4">
+            Lưu vào kho
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: QUẢN LÝ ACCOUNT POOL (Mục 2.1 & AC-12)
+       ========================================================================= -->
+  <div id="modalAccount" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="glass-panel w-full max-w-2xl p-6 rounded-2xl space-y-5 border border-slate-700">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>👥</span> Quản lý Account Pool
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">Quản lý các tài khoản đăng nhập dùng chung cho toàn bộ hàng đợi</p>
+        </div>
+        <button onclick="closeAccountModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <section class="machine-license-panel" aria-label="Mã máy và hạn mức tài khoản">
+        <label for="machineId" class="block text-xs font-semibold text-slate-300 mb-1.5">Mã máy</label>
+        <div class="flex items-center gap-2">
+          <input id="machineId" readonly spellcheck="false" value="Đang đọc mã máy…" class="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-indigo-200" onclick="this.select()">
+          <button id="btnCopyMachineId" type="button" disabled onclick="copyMachineId(event)" class="btn-secondary text-xs py-2 px-3">Copy mã máy</button>
+        </div>
+        <p id="machineLicenseInfo" class="text-xs text-slate-400 mt-2" role="status">Chỉ kiểm tra Firebase khi thêm tài khoản.</p>
+      </section>
+
+      <!-- Thêm tài khoản mới (Mục 2.5: Encrypted at rest, never log) -->
+      <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-3">
+        <div class="text-xs font-bold text-slate-300">Thêm tài khoản mới:</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Định danh / Tên tài khoản:</label>
+            <input type="text" id="inpAccIdentifier" placeholder="VD: user1@muse.ai hoặc Acc01"
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Session Token / Cookie (sẽ được mã hóa):</label>
+            <input type="password" id="inpAccCredential" placeholder="hatch_sess=...; hatch_vml=..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button id="btnAddAccount" onclick="submitNewAccount()" class="btn-primary text-xs py-1.5 px-4 font-semibold">
+            + Thêm vào Pool
+          </button>
+        </div>
+      </div>
+
+      <!-- Danh sách tài khoản trong Pool (Mục 2.1) -->
+      <div class="space-y-2">
+        <div class="text-xs font-bold text-slate-300">Danh sách tài khoản hiện có:</div>
+        <div class="max-h-60 overflow-y-auto space-y-2" id="accountListContainer">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2 border-t border-slate-800">
+        <button onclick="closeAccountModal()" class="btn-secondary text-xs py-2 px-4">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container (Mục 4.5 & Toasts) -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="/app.js?v=1.0.26"></script>
+</body>
+</html>

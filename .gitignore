@@ -1,0 +1,37 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+dist_installer/
+dist_license/
+installer_output/
+*.spec
+
+# User Data & Secrets (AC-12: Never commit user accounts, cookies, media, or logs)
+data/
+*.log
+install_test.log
+
+# Large Binaries (exceeds GitHub 100MB file limit)
+bin/*.exe
+redist/*.exe
+
+# Scratch / One-off inspection scripts
+chat_msgs_full.json
+new_videos.json
+dump_chat_msgs.py
+inspect_new_videos.py
+inspect_poster.py
+
+# System & IDE
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

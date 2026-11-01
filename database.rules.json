@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "licenses": {
+      "$machine_id": {
+        ".read": true,
+        ".write": "!data.exists() && newData.child('status').val() === 'free'"
+      }
+    }
+  }
+}
