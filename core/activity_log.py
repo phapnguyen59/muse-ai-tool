@@ -22,6 +22,12 @@ except (OSError, ValueError, TypeError, KeyError):
 
 def record(message, job_id='', level='info'):
     global _sequence
+    try:
+        tag = f"[{level.upper()}]" if level else "[INFO]"
+        prefix = f"[{job_id}] " if job_id else ""
+        print(f"{tag} {prefix}{message}", flush=True)
+    except Exception:
+        pass
     with _lock:
         _sequence += 1
         _entries.append(dict(id=_sequence, time=time.time(), jobId=job_id,
