@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/styles.css?v=1.0.25">
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col pb-14">
 
   <!-- =========================================================================
        APP HEADER & KHO ẢNH THAM CHIẾU CỐ ĐỊNH (Mục 2.1 & Mục 3.1)
@@ -384,10 +384,29 @@
     </div>
   </div>
 
+  
+  <!-- Live Activity Log Drawer (Nhật ký hoạt động thời gian thực) -->
+  <footer id="liveLogDrawer" class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 text-xs shadow-2xl transition-all duration-300">
+    <div class="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/60 transition-colors" onclick="toggleLogDrawer()">
+      <div class="flex items-center gap-2 overflow-hidden mr-4">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+        <span class="font-bold text-slate-300 flex-shrink-0 uppercase tracking-wide text-[11px]">NHẬT KÝ HOẠT ĐỘNG:</span>
+        <span id="txtLatestLogMsg" class="text-sky-300 font-mono text-[11px] truncate">Hệ thống đang hoạt động và sẵn sàng...</span>
+      </div>
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <button onclick="event.stopPropagation(); clearActivityLogs()" class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors border border-slate-700/60">Xóa log</button>
+        <span id="logDrawerChevron" class="text-slate-400 text-[11px] font-semibold hover:text-slate-200">▲ Mở rộng log</span>
+      </div>
+    </div>
+    <div id="logDrawerBody" class="hidden h-44 px-4 py-2 bg-slate-950/95 font-mono text-[11px] text-slate-300 overflow-y-auto space-y-1 border-t border-slate-800/80">
+      <div class="text-slate-500 italic py-2 text-center">Chưa có nhật ký hoạt động mới...</div>
+    </div>
+  </footer>
+
   <!-- Toast Notification Container (Mục 4.5 & Toasts) -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="/app.js?v=1.0.26"></script>
+  <script src="/app.js?v=1.0.27"></script>
 </body>
 </html>

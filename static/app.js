@@ -1048,6 +1048,7 @@ function startStatePolling() {
       }
       updateHeaderCounters(state);
       renderLiveRunningStrip(state.runningJobs || []);
+      renderLiveLogs(state.logs || []);
 
       const currRunning = state.counts['Đang chạy'] || 0;
       const currCompleted = state.counts['Hoàn thành'] || 0;
@@ -1588,4 +1589,86 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+
+// =========================================================================
+// Live Activity Log Drawer (Nhật ký hoạt động thời gian thực)
+// =========================================================================
+let isLogDrawerOpen = false;
+
+function toggleLogDrawer() {
+  const body = document.getElementById('logDrawerBody');
+  const chevron = document.getElementById('logDrawerChevron');
+  if (!body) return;
+  isLogDrawerOpen = !isLogDrawerOpen;
+  if (isLogDrawerOpen) {
+    body.classList.remove('hidden');
+    if (chevron) chevron.textContent = '▼ Thu gọn log';
+    body.scrollTop = body.scrollHeight;
+  } else {
+    body.classList.add('hidden');
+    if (chevron) chevron.textContent = '▲ Mở rộng log';
+  }
+}
+
+async function clearActivityLogs() {
+  try {
+    await fetch('/api/logs', { method: 'DELETE' });
+    const body = document.getElementById('logDrawerBody');
+    if (body) body.innerHTML = '<div class="text-slate-500 italic py-2 text-center">Đã xóa sạch nhật ký hoạt động.</div>';
+    const txt = document.getElementById('txtLatestLogMsg');
+    if (txt) txt.textContent = 'Đã xóa nhật ký hoạt động.';
+  } catch (e) {
+    console.error('Clear logs error:', e);
+  }
+}
+
+function renderLiveLogs(logs) {
+  if (!Array.isArray(logs) || logs.length === 0) return;
+  const latest = logs[logs.length - 1];
+  const txtLatest = document.getElementById('txtLatestLogMsg');
+  if (txtLatest && latest) {
+    const d = new Date(latest.time * 1000);
+    const timeStr = d.toTimeString().split(' ')[0];
+    const jId = latest.jobId ? `[${latest.jobId}] ` : '';
+    txtLatest.textContent = `[${timeStr}] ${jId}${latest.message}`;
+  }
+
+  const body = document.getElementById('logDrawerBody');
+  if (!body || !isLogDrawerOpen) return;
+
+  const wasNearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 50;
+
+  const colorMap = {
+    info: 'text-slate-300',
+    success: 'text-emerald-400 font-bold',
+    warning: 'text-amber-400',
+    error: 'text-rose-400 font-bold'
+  };
+
+  const tagColorMap = {
+    info: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
+    success: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    warning: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    error: 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+  };
+
+  body.innerHTML = logs.map(l => {
+    const d = new Date(l.time * 1000);
+    const timeStr = d.toTimeString().split(' ')[0];
+    const lvl = (l.level || 'info').toLowerCase();
+    const tagCls = tagColorMap[lvl] || tagColorMap.info;
+    const txtCls = colorMap[lvl] || colorMap.info;
+    const jId = l.jobId ? `<span class="text-indigo-400">[${escapeHtml(l.jobId)}]</span> ` : '';
+    return `<div class="flex items-start gap-2 py-0.5 hover:bg-slate-900/60 rounded px-1">
+      <span class="text-slate-500 select-none">${timeStr}</span>
+      <span class="text-[9px] px-1 py-0.2 rounded border font-sans uppercase font-bold select-none ${tagCls}">${lvl}</span>
+      <span class="flex-1 ${txtCls}">${jId}${escapeHtml(l.message)}</span>
+    </div>`;
+  }).join('');
+
+  if (wasNearBottom) {
+    body.scrollTop = body.scrollHeight;
+  }
 }

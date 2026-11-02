@@ -25,7 +25,8 @@ def record(message, job_id='', level='info'):
     try:
         tag = f"[{level.upper()}]" if level else "[INFO]"
         prefix = f"[{job_id}] " if job_id else ""
-        print(f"{tag} {prefix}{message}", flush=True)
+        t_str = time.strftime("%H:%M:%S")
+        print(f"[{t_str}] {tag} {prefix}{message}", flush=True)
     except Exception:
         pass
     with _lock:

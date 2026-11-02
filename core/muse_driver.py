@@ -14,8 +14,6 @@ Muse AI Real CDP Driver — Điều khiển Google Chrome headless để tạo v
 
 from __future__ import annotations
 
-
-
 import asyncio
 
 import base64
@@ -42,21 +40,13 @@ from pathlib import Path
 
 from typing import Any, Callable, Dict, List, Optional
 
-
-
 import sys
 
 import websockets
 
 from core.activity_log import record
 
-
-
 log = logging.getLogger("muse_driver")
-
-
-
-
 
 def find_chrome_path() -> Optional[str]:
 
@@ -67,8 +57,6 @@ def find_chrome_path() -> Optional[str]:
     if env_path and os.path.isfile(env_path):
 
         return env_path
-
-
 
     try:
 
@@ -93,8 +81,6 @@ def find_chrome_path() -> Optional[str]:
     except Exception:
 
         pass
-
-
 
     candidates = [
 
@@ -130,10 +116,6 @@ def find_chrome_path() -> Optional[str]:
 
     return None
 
-
-
-
-
 def find_bin_tool(name: str) -> Optional[str]:
 
     """Tìm binary tool (ffmpeg, ffprobe) trong PATH hoặc thư mục bin đi kèm."""
@@ -168,15 +150,9 @@ def find_bin_tool(name: str) -> Optional[str]:
 
     return None
 
-
-
-
-
 CHROME_PATH = find_chrome_path() or r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 from core.paths import DATA_DIR, MEDIA_DIR, PROFILES_DIR
-
-
 
 # Stable attributes from the supplied Muse compose button; CSS classes vary.
 
@@ -185,8 +161,6 @@ COMPOSE_SELECTOR = ('button[data-testid="hatch-chat-compose"], '
                     'button[aria-label="\u0110o\u1ea1n chat ph\u1ee5 m\u1edbi"], '
 
                     'button[title="\u0110o\u1ea1n chat ph\u1ee5 m\u1edbi"]')
-
-
 
 EDITOR_JS = """(() => {
 
@@ -217,10 +191,6 @@ EDITOR_JS = """(() => {
     return null;
 
 })()"""
-
-
-
-
 
 async def enter_prompt(send_cmd, is_cancelled, prompt, job_id=''):
 
@@ -286,10 +256,6 @@ async def enter_prompt(send_cmd, is_cancelled, prompt, job_id=''):
 
     raise RuntimeError('Muse composer did not retain the prompt; prompt was not sent')
 
-
-
-
-
 async def open_new_thread(send_cmd, is_cancelled, job_id=''):
 
     """Click Muse's compose button; navigate directly only when it is absent."""
@@ -354,8 +320,6 @@ async def open_new_thread(send_cmd, is_cancelled, job_id=''):
 
         raise RuntimeError('Muse new-thread button is disabled')
 
-
-
     last_page = {}
 
     for attempt in range(120):
@@ -412,10 +376,6 @@ async def open_new_thread(send_cmd, is_cancelled, job_id=''):
 
     raise RuntimeError('Muse new-thread page did not become ready; prompt was not sent; page=' + str(diagnostic))
 
-
-
-
-
 async def open_existing_thread(send_cmd, is_cancelled, thread_id, job_id=''):
 
     """Keep a usable tab; otherwise bootstrap Muse before opening its history link."""
@@ -427,8 +387,6 @@ async def open_existing_thread(send_cmd, is_cancelled, thread_id, job_id=''):
     if thread_id_from_url(target) != thread_id:
 
         raise RuntimeError('Invalid saved thread ID; prompt was not sent')
-
-
 
     async def probe():
 
@@ -458,13 +416,9 @@ async def open_existing_thread(send_cmd, is_cancelled, thread_id, job_id=''):
 
         return page
 
-
-
     def usable(page):
 
         return page.get('state') != 'loading' and bool(page.get('editor') or page.get('video') or page.get('frames') or page.get('textLength', 0) > 0)
-
-
 
     await send_cmd('Page.bringToFront')
 
@@ -534,10 +488,6 @@ async def open_existing_thread(send_cmd, is_cancelled, thread_id, job_id=''):
 
     raise RuntimeError('Không đọc được nội dung thread Muse (trang trống hoặc sai thread). Đây là lỗi tải trang, chưa thể xác định có video hay không.')
 
-
-
-
-
 async def prepare_new_thread(send_cmd, is_cancelled, job_id=''):
 
     """The compose button must be usable before a chat editor even exists."""
@@ -578,10 +528,6 @@ async def prepare_new_thread(send_cmd, is_cancelled, job_id=''):
 
     await open_new_thread(send_cmd, is_cancelled, job_id)
 
-
-
-
-
 def get_free_port() -> int:
 
     """Tìm một cổng mạng còn trống để mở Chrome CDP."""
@@ -591,10 +537,6 @@ def get_free_port() -> int:
         s.bind(("", 0))
 
         return s.getsockname()[1]
-
-
-
-
 
 def format_muse_video_prompt(user_prompt: str, duration: int = 15, ratio: str = "9:16", has_ref: bool = False) -> str:
 
@@ -622,10 +564,6 @@ def format_muse_video_prompt(user_prompt: str, duration: int = 15, ratio: str = 
 
         return f"Brand new text-to-video creation: Generate a 1:1 square video (duration strictly {duration} seconds): {p}"
 
-
-
-
-
 class MuseCDPSession:
 
     def __init__(self, account_id: str, cookie_header: str):
@@ -645,8 +583,6 @@ class MuseCDPSession:
         self.profile_dir.mkdir(parents=True, exist_ok=True)
 
         MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-
-
 
     def _parse_cookies(self) -> List[Dict[str, str]]:
 
@@ -678,15 +614,11 @@ class MuseCDPSession:
 
         return cookies
 
-
-
     def start_browser(self):
 
         with self._browser_lock:
 
             self._start_browser()
-
-
 
     def _start_browser(self):
 
@@ -756,8 +688,6 @@ class MuseCDPSession:
 
                 pass
 
-
-
     def stop_browser(self):
 
         if self.proc:
@@ -779,8 +709,6 @@ class MuseCDPSession:
                     pass
 
             self.proc = None
-
-
 
     async def generate_video(
 
@@ -808,8 +736,6 @@ class MuseCDPSession:
 
         from core.muse_thread import PageConnection, ResponseTracker, read_thread_snapshot, thread_id_from_url
 
-
-
         job = queue_manager.get_job(job_id)
 
         if job is None:
@@ -823,8 +749,6 @@ class MuseCDPSession:
         prompt_formatted = format_muse_video_prompt(user_prompt, duration, ratio, bool(resolved_refs))
 
         on_progress(5)
-
-
 
         def get_tab():
 
@@ -848,8 +772,6 @@ class MuseCDPSession:
 
                 return json.loads(response.read().decode())
 
-
-
         tab = await asyncio.to_thread(get_tab)
 
         job.tab_id = tab['id']
@@ -860,15 +782,11 @@ class MuseCDPSession:
 
         send_cmd = connection.command
 
-
-
         async def evaluate(expression):
 
             result = await send_cmd('Runtime.evaluate', {'expression': expression, 'returnByValue': True})
 
             return result.get('result', {}).get('result', {}).get('value')
-
-
 
         try:
 
@@ -960,13 +878,13 @@ class MuseCDPSession:
 
                         raise RuntimeError('Muse send button was not available; prompt was not submitted')
 
-
-
             on_progress(35)
 
             tracker = ResponseTracker()
 
-            record('Đang chờ Muse tạo video', job_id)
+            wait_start = time.monotonic()
+
+            record('Đang chờ Muse AI tạo video...', job_id)
 
             last_wait_log = time.monotonic()
 
@@ -980,29 +898,11 @@ class MuseCDPSession:
 
                 snapshot = await read_thread_snapshot(send_cmd, prompt_formatted)
 
-                if time.monotonic() - last_wait_log >= 60:
+                if time.monotonic() - last_wait_log >= 15:
 
-                    record('Theo dõi thread: ' + json.dumps({
+                    elapsed = int(time.monotonic() - wait_start)
 
-                        'busy': snapshot.get('busy'), 'video': bool(snapshot.get('src')),
-
-                        'playable': snapshot.get('playable'), 'answer': snapshot.get('hasAnswer'),
-
-                        'complete': snapshot.get('responseComplete'),
-
-                        'ready': snapshot.get('ready'), 'root': snapshot.get('rootTag'),
-
-                        'online': snapshot.get('online'), 'videos': snapshot.get('videoCount'),
-
-                        'messages': snapshot.get('messageCount'), 'bodyLength': snapshot.get('bodyLength'),
-
-                        'documentState': snapshot.get('documentState'), 'title': snapshot.get('title'),
-
-                        'frames': snapshot.get('frameCount'), 'bodyChildren': snapshot.get('bodyChildren'),
-
-                        'reason': snapshot.get('reason'),
-
-                    }), job_id)
+                    record(f'Đang chờ Muse AI render video... (đã xử lý {elapsed}s)', job_id)
 
                     last_wait_log = time.monotonic()
 
@@ -1048,13 +948,9 @@ class MuseCDPSession:
 
                 await asyncio.sleep(3)
 
-
-
             on_progress(90)
 
             record('Đang tải video về máy', job_id)
-
-
 
             # 6. Tải dữ liệu video (blob hoặc URL) về máy tính
 
@@ -1065,8 +961,6 @@ class MuseCDPSession:
             target_vid_path = MEDIA_DIR / vid_filename
 
             target_thumb_path = MEDIA_DIR / thumb_filename
-
-
 
             # Dùng fetch trong trình duyệt để chuyển video src thành base64
 
@@ -1110,8 +1004,6 @@ class MuseCDPSession:
 
             data_url = res_blob.get("result", {}).get("result", {}).get("value", "")
 
-
-
             if data_url and "base64," in data_url:
 
                 b64_data = data_url.split("base64,", 1)[1]
@@ -1129,8 +1021,6 @@ class MuseCDPSession:
                 else:
 
                     raise RuntimeError("Không thể tải luồng blob video MP4 từ Muse.ai")
-
-
 
             # A downloaded HTML error page or a synthetic header is not a video.
 
@@ -1164,8 +1054,6 @@ class MuseCDPSession:
 
                 raise RuntimeError('Muse did not return a valid video file')
 
-
-
             # Trích xuất thumbnail từ Muse (ưu tiên poster/img của Muse, fallback canvas)
 
             snap_thumb_js = f"""(async function(){{
@@ -1173,8 +1061,6 @@ class MuseCDPSession:
                 var v = [...document.querySelectorAll('video')].find(el => (el.src || el.currentSrc) === {json.dumps(new_video_src)});
 
                 if (!v) return '';
-
-
 
                 // 1. Poster chính thức do Muse gắn trên thẻ video
 
@@ -1201,8 +1087,6 @@ class MuseCDPSession:
                     }} catch(e) {{}}
 
                 }}
-
-
 
                 // 2. Thẻ img ảnh bìa nằm cùng card/bubble video của Muse
 
@@ -1235,8 +1119,6 @@ class MuseCDPSession:
                     }}
 
                 }}
-
-
 
                 // 3. Chụp trực tiếp frame từ thẻ video của Muse bằng HTML5 Canvas
 
@@ -1276,8 +1158,6 @@ class MuseCDPSession:
 
             thumb_data_url = res_snap.get("result", {}).get("result", {}).get("value", "")
 
-
-
             if thumb_data_url and "base64," in thumb_data_url:
 
                 b64_thumb = thumb_data_url.split("base64,", 1)[1]
@@ -1308,11 +1188,7 @@ class MuseCDPSession:
 
                     raise RuntimeError('Could not extract a thumbnail from the Muse video')
 
-
-
             on_progress(100)
-
-
 
             return {
 
@@ -1328,15 +1204,7 @@ class MuseCDPSession:
 
             await connection.close()
 
-
-
-
-
 _sessions: Dict[str, MuseCDPSession] = {}
-
-
-
-
 
 def get_muse_session(account_id: str, cookie_header: str) -> MuseCDPSession:
 
@@ -1349,4 +1217,3 @@ def get_muse_session(account_id: str, cookie_header: str) -> MuseCDPSession:
         _sessions[account_id].cookie_header = cookie_header
 
     return _sessions[account_id]
-

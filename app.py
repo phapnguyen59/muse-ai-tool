@@ -34,7 +34,7 @@ from pathlib import Path
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import FastAPI, Request, File, HTTPException, Query, UploadFile, status
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -68,6 +68,9 @@ from core.paths import (
     REFS_DIR,
     init_data_directory,
 )
+
+
+
 
 init_data_directory()
 
@@ -147,6 +150,21 @@ app.add_middleware(
 
 )
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    import time
+    from core.activity_log import record
+    start_time = time.time()
+    method = request.method
+    path = request.url.path
+    response = await call_next(request)
+    duration = time.time() - start_time
+    if (method in ("POST", "PUT", "DELETE", "PATCH") or response.status_code >= 400) and not path.startswith("/static"):
+        status_code = response.status_code
+        lvl = "error" if status_code >= 500 else ("warning" if status_code >= 400 else "info")
+        record(f"[API] {method} {path} -> {status_code} ({duration:.2f}s)", level=lvl)
+    return response
+
 
 # =========================================================================
 
@@ -194,6 +212,9 @@ async def api_add_account(req: AddAccountRequest):
                 f'Đã đạt giới hạn {saved}/{decision.max_accounts} tài khoản (status: {decision.status}). '
                 'Tài khoản Offline hoặc bị tắt vẫn được tính; hãy xóa bớt hoặc nâng hạn mức.'))
         acc = account_pool.add_account(req.credentials, req.identifier or "")
+        from core.activity_log import record
+        acc_name = req.identifier or getattr(acc, "id", "") or "Mới"
+        record(f"Tài khoản: Đã thêm tài khoản '{acc_name}' (Tổng pool: {saved + 1} tài khoản)")
         return {"ok": True, "account": acc.to_dict(include_credential=False),
                 "license": decision.to_dict(), "savedAccounts": saved + 1}
 
@@ -205,10 +226,10 @@ def api_remove_account(account_id: str):
     """Xóa tài khoản, hủy session, xóa credential đã mã hóa; gán lại job đang chạy (Mục 2.4 & 8.1)."""
 
     acc = account_pool.remove_account(account_id)
-
     if not acc:
-
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+    from core.activity_log import record
+    record(f"Tài khoản: Đã xóa tài khoản {account_id}")
 
     return {"ok": True, "id": account_id}
 
@@ -313,6 +334,8 @@ def api_enqueue_batch(req: EnqueueBatchRequest):
 
     )
 
+    from core.activity_log import record
+    record(f"Hàng đợi: Đã thêm {len(task_ids)} video vào hàng đợi")
     return {"ok": True, "taskIds": task_ids, "count": len(task_ids)}
 
 
@@ -363,6 +386,8 @@ async def api_process_queue(req: Optional[ProcessQueueRequest] = None):
         dispatcher.set_concurrency(req.concurrency)
 
     dispatcher.start()
+    from core.activity_log import record
+    record(f"Hàng đợi: Bắt đầu xử lý cuốn chiếu (luồng={dispatcher.concurrency})")
 
     return {"ok": True, "isRunning": True, "configuredConcurrency": dispatcher.concurrency,
 

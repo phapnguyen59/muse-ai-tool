@@ -45,7 +45,7 @@ def get_version(base_dir: str) -> str:
                 return f.read().strip()
         except Exception:
             pass
-    return "1.0.1"
+    return "1.0.2"
 
 
 def get_local_ip() -> str:
@@ -167,7 +167,9 @@ class ServerApp(tk.Tk):
         self._build_ui()
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.last_log_id = 0
         self.after(300, self.start_server_thread)
+        self.after(600, self._start_log_poller)
 
     def _init_styles(self):
         style = ttk.Style(self)
