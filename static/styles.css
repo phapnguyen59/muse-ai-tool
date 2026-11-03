@@ -624,3 +624,67 @@ header.app-header { position: relative; flex: 0 0 auto; }
   .video-row { flex-wrap: wrap; padding: 10px; gap: 8px; }
   .video-row > div:last-child { margin-left: auto; }
 }
+
+/* =========================================================================
+   CUSTOM CHECKBOX & BATCH SELECTION STYLING
+   ========================================================================= */
+.custom-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid #475569;
+  border-radius: 4px;
+  background-color: #0b0f19;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: all 0.15s ease-in-out;
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  margin: 0;
+}
+.custom-checkbox:hover {
+  border-color: #818cf8;
+  background-color: #1e1b4b;
+}
+.custom-checkbox:checked {
+  background-color: #4f46e5;
+  border-color: #6366f1;
+}
+.custom-checkbox:checked::before {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+.custom-checkbox:indeterminate {
+  background-color: #4f46e5;
+  border-color: #6366f1;
+}
+.custom-checkbox:indeterminate::before {
+  content: "";
+  width: 8px;
+  height: 2px;
+  background-color: #ffffff;
+  border-radius: 1px;
+}
+.row-checkbox-wrapper {
+  margin-right: 6px;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.row-checkbox-wrapper:hover {
+  background-color: rgba(99, 102, 241, 0.15);
+}
+.video-row.selected-row {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  background: rgba(30, 27, 75, 0.45) !important;
+}
+.batch-action-bar {
+  border-radius: 8px 8px 0 0;
+}

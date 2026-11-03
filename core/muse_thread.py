@@ -69,7 +69,7 @@ THREAD_SNAPSHOT_JS = r"""(() => {
         || document.querySelector('[role="main"]') || document.body;
     if (!root) return {url: location.href, ready: false, reason: 'no-document-body'};
     root.scrollTop = root.scrollHeight;
-    const visible = el => !!el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+    const visible = el => (el.getClientRects().length > 0 || (getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).opacity !== '0'));
     const assistant = [...root.querySelectorAll(
         '[data-message-author-role="assistant"], [data-role="assistant"], [data-message-role="assistant"], [data-testid="assistant-message"]'
     )];
@@ -92,20 +92,62 @@ THREAD_SNAPSHOT_JS = r"""(() => {
     const scope = root;
     const videos = [...new Set([...scope.querySelectorAll('video'), ...document.querySelectorAll('video')])].filter(v =>
         !v.closest('.rounded-full, header, nav, [data-testid*="avatar"]'));
-    const videoSource = v => v.currentSrc || v.src || v.querySelector('source[src]')?.src || '';
-    const playable = v => !!videoSource(v) && v.readyState >= 2 && Number.isFinite(v.duration)
-        && v.duration > 0 && v.videoWidth > 0 && v.videoHeight > 0;
-    const video = [...videos].reverse().find(playable) || [...videos].reverse().find(videoSource);
-    // Some completed results are download cards, with no <video> until played.
-    const download = [...scope.querySelectorAll('a[href]')].reverse().find(a =>
-        /\.(mp4|webm)(?:[?#]|$)/i.test(a.href) || /^video\//i.test(a.type || ''));
-    const src = (video && playable(video) ? videoSource(video) : '') || download?.href || (video ? videoSource(video) : '') || '';
+
+    for (const v of videos) {
+        if (v && v.readyState < 2) {
+            try { v.preload = 'auto'; v.load(); } catch(_) {}
+        }
+    }
+
+    const videoSource = v => {
+        if (!v) return '';
+        let s = v.currentSrc || v.src || '';
+        if (!s) {
+            const srcEl = v.querySelector('source[src]');
+            if (srcEl) s = srcEl.src || srcEl.getAttribute('src') || '';
+        }
+        if (!s) s = v.getAttribute('src') || (v.dataset ? (v.dataset.src || v.dataset.url) : '') || '';
+        return s || '';
+    };
+
+    const playable = v => {
+        const s = videoSource(v);
+        if (!s) return false;
+        if (s.startsWith('blob:') || /\.(mp4|webm|mov)(?:[?#]|$)/i.test(s)) return true;
+        return (v.readyState >= 1 || (Number.isFinite(v.duration) && v.duration > 0) || (v.videoWidth > 0 && v.videoHeight > 0));
+    };
+
+    const video = [...videos].reverse().find(playable) || [...videos].reverse().find(v => !!videoSource(v));
+    const download = [...scope.querySelectorAll('a[href], [data-download-url], [data-video-url]')].reverse().find(a => {
+        const h = a.href || (a.dataset ? (a.dataset.downloadUrl || a.dataset.videoUrl) : '') || '';
+        return /\.(mp4|webm|mov)(?:[?#]|$)/i.test(h) || /^blob:/i.test(h) || /^video\//i.test(a.type || '');
+    });
+    const downloadHref = download ? (download.href || (download.dataset ? (download.dataset.downloadUrl || download.dataset.videoUrl) : '') || '') : '';
+    const src = (video ? videoSource(video) : '') || downloadHref || '';
+    const hasValidVideo = !!src && (src.startsWith('blob:') || src.startsWith('http://') || src.startsWith('https://'));
+
     const stop = [...document.querySelectorAll('button[aria-label]')].some(b =>
         visible(b) && !b.disabled && /^(stop|stop generating|stop response|dừng|dừng tạo|dừng phản hồi)$/i.test(b.getAttribute('aria-label').trim()));
     const pending = [...root.querySelectorAll('[aria-busy="true"], [role="progressbar"], [data-state="streaming"]')].some(visible)
         || [...root.querySelectorAll('[role="status"], [aria-live="polite"]')].some(el => visible(el)
             && (el.innerText || '').length < 200
             && /(?:Generating|Assembling|Rendering|Thinking|Processing|Đang tạo|Đang xử lý)\s*(?:\.{3}|…)/i.test(el.innerText || ''));
+    
+    const isBusy = hasValidVideo ? false : (stop || pending);
+
+    let detectedThreadId = '';
+    const pName = (location.pathname || (location.href ? (location.href.split('/').slice(3).join('/')) : ''));
+    const m = pName.match(/(?:^|\/)thread\/([A-Za-z0-9_-]+)/);
+    if (m && m[1] !== 'new') detectedThreadId = m[1];
+    if (!detectedThreadId) {
+        const link = document.querySelector('a[href*="/thread/"]');
+        if (link) {
+            const href = link.getAttribute('href') || link.href || '';
+            const lm = href.match(/\/thread\/([A-Za-z0-9_-]+)/);
+            if (lm && lm[1] !== 'new') detectedThreadId = lm[1];
+        }
+    }
+
     const editor = document.querySelector('textarea:not(:disabled), [contenteditable="true"]');
     const editorEmpty = editor && !(editor.value || editor.textContent || '').trim();
     const sendPresent = [...document.querySelectorAll('button[aria-label], button[type="submit"]')].some(b => visible(b)
@@ -114,7 +156,8 @@ THREAD_SNAPSHOT_JS = r"""(() => {
         || [...last.querySelectorAll('button[aria-label]')].some(b => /copy (message|response)|regenerate|sao chép (tin nhắn|phản hồi)/i.test(b.getAttribute('aria-label') || '')));
     const error = [...root.querySelectorAll('[role="alert"]')].filter(visible).map(e => e.innerText).filter(Boolean).join('\n');
     const pageReady = !!text.trim() || videos.length > 0 || !!editor;
-    return {url: location.href, ready: pageReady, busy: stop || pending,
+    return {url: location.href, ready: pageReady, busy: isBusy,
+        detectedThreadId: detectedThreadId,
         documentState: document.readyState, title: document.title,
         frameCount: document.querySelectorAll('iframe').length,
         bodyChildren: document.body?.children?.length || 0,
@@ -122,7 +165,7 @@ THREAD_SNAPSHOT_JS = r"""(() => {
         rootTag: root.tagName, online: navigator.onLine, videoCount: videos.length,
         messageCount: messages.length, bodyLength: text.length,
         hasAnswer: !!answer.trim() || !!src, answer, src, error,
-        playable: (!!video && playable(video)) || !!download,
+        playable: hasValidVideo || (!!video && playable(video)) || !!download,
         responseComplete: !!answer.trim() && !stop && !pending && (explicitComplete || (editorEmpty && sendPresent)),
         videoSignature: JSON.stringify([src, video?.duration || 0, video?.videoWidth || 0, video?.videoHeight || 0]),
         signature: JSON.stringify([answer, src, error, video ? video.readyState : 0])};

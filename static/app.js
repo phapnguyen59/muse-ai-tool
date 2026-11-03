@@ -754,6 +754,192 @@ async function fetchAllJobs(status, search) {
   return { ...first, jobs: [...records.values()], total: records.size };
 }
 
+
+// =========================================================================
+// BATCH SELECTION & BULK ACTIONS (Checkbox, Download All, Delete All)
+// =========================================================================
+const selectedJobIds = new Set();
+
+function onJobCheckboxChange(e, jobId) {
+  e.stopPropagation();
+  const checked = e.target.checked;
+  if (checked) {
+    selectedJobIds.add(jobId);
+  } else {
+    selectedJobIds.delete(jobId);
+  }
+  const row = document.getElementById(`row_${jobId}`);
+  if (row) {
+    row.classList.toggle('selected-row', checked);
+  }
+  updateBatchActionBar();
+}
+
+function toggleSelectAll(checked) {
+  const currentJobs = AppState.currentJobs || [];
+  if (checked) {
+    currentJobs.forEach(j => selectedJobIds.add(j.id));
+  } else {
+    currentJobs.forEach(j => selectedJobIds.delete(j.id));
+  }
+  document.querySelectorAll('.job-row-checkbox').forEach(cb => {
+    const jid = cb.getAttribute('data-job-id');
+    cb.checked = selectedJobIds.has(jid);
+    const row = document.getElementById(`row_${jid}`);
+    if (row) row.classList.toggle('selected-row', cb.checked);
+  });
+  updateBatchActionBar();
+}
+
+function clearSelection() {
+  selectedJobIds.clear();
+  document.querySelectorAll('.job-row-checkbox').forEach(cb => {
+    cb.checked = false;
+    const row = document.getElementById(`row_${cb.getAttribute('data-job-id')}`);
+    if (row) row.classList.remove('selected-row');
+  });
+  updateBatchActionBar();
+}
+
+function updateBatchActionBar() {
+  const chkSelectAll = document.getElementById('chkSelectAll');
+  const lblSelectAll = document.getElementById('lblSelectAll');
+  const valSelectedCount = document.getElementById('valSelectedCount');
+  const btnClearSelection = document.getElementById('btnClearSelection');
+  const btnBatchDownload = document.getElementById('btnBatchDownload');
+  const txtBatchDownloadLabel = document.getElementById('txtBatchDownloadLabel');
+  const btnBatchDelete = document.getElementById('btnBatchDelete');
+  const txtBatchDeleteLabel = document.getElementById('txtBatchDeleteLabel');
+
+  if (!chkSelectAll) return;
+
+  const currentJobs = AppState.currentJobs || [];
+  const totalCount = currentJobs.length;
+  const selectedCount = selectedJobIds.size;
+
+  const displayedSelectedCount = currentJobs.filter(j => selectedJobIds.has(j.id)).length;
+  const isAllDisplayedSelected = totalCount > 0 && displayedSelectedCount === totalCount;
+  const isSomeDisplayedSelected = displayedSelectedCount > 0 && displayedSelectedCount < totalCount;
+
+  chkSelectAll.checked = isAllDisplayedSelected;
+  chkSelectAll.indeterminate = isSomeDisplayedSelected;
+
+  if (isAllDisplayedSelected) {
+    lblSelectAll.textContent = `Chọn tất cả (${totalCount})`;
+  } else {
+    lblSelectAll.textContent = totalCount > 0 ? `Chọn tất cả (${totalCount})` : 'Chọn tất cả';
+  }
+
+  if (valSelectedCount) valSelectedCount.textContent = selectedCount;
+  if (btnClearSelection) btnClearSelection.classList.toggle('hidden', selectedCount === 0);
+
+  const downloadableJobs = (AppState.allLoadedJobs || []).filter(
+    j => selectedJobIds.has(j.id) && j.status === 'Hoàn thành' && j.videoUrl
+  );
+  const downloadableCount = downloadableJobs.length;
+
+  if (btnBatchDownload && txtBatchDownloadLabel) {
+    if (downloadableCount > 0) {
+      btnBatchDownload.disabled = false;
+      btnBatchDownload.classList.remove('opacity-50', 'cursor-not-allowed');
+      if (isAllDisplayedSelected) {
+        txtBatchDownloadLabel.textContent = `Tải tất cả (${downloadableCount})`;
+      } else {
+        txtBatchDownloadLabel.textContent = `Tải về (${downloadableCount})`;
+      }
+    } else {
+      btnBatchDownload.disabled = true;
+      btnBatchDownload.classList.add('opacity-50', 'cursor-not-allowed');
+      txtBatchDownloadLabel.textContent = 'Tải về (0)';
+    }
+  }
+
+  if (btnBatchDelete && txtBatchDeleteLabel) {
+    if (selectedCount > 0) {
+      btnBatchDelete.disabled = false;
+      btnBatchDelete.classList.remove('opacity-50', 'cursor-not-allowed');
+      if (isAllDisplayedSelected) {
+        txtBatchDeleteLabel.textContent = `Xóa tất cả (${selectedCount})`;
+      } else {
+        txtBatchDeleteLabel.textContent = `Xóa (${selectedCount})`;
+      }
+    } else {
+      btnBatchDelete.disabled = true;
+      btnBatchDelete.classList.add('opacity-50', 'cursor-not-allowed');
+      txtBatchDeleteLabel.textContent = 'Xóa (0)';
+    }
+  }
+}
+
+function handleBatchDownload() {
+  const downloadableJobs = (AppState.allLoadedJobs || []).filter(
+    j => selectedJobIds.has(j.id) && j.status === 'Hoàn thành' && j.videoUrl
+  );
+  if (!downloadableJobs.length) {
+    showToast('Chưa có video nào hoàn thành để tải về', 'warn');
+    return;
+  }
+
+  function downloadSingleVideo(job) {
+    const a = document.createElement('a');
+    a.href = job.videoUrl || `/api/media/${job.id}.mp4`;
+    a.download = `${job.id}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  if (downloadableJobs.length === 1) {
+    const job = downloadableJobs[0];
+    downloadSingleVideo(job);
+    showToast(`Đang tải video ${job.id}.mp4...`, 'success');
+    return;
+  }
+
+  showToast(`Bắt đầu tải lần lượt ${downloadableJobs.length} video MP4 về máy...`, 'info');
+  downloadableJobs.forEach((job, index) => {
+    setTimeout(() => {
+      downloadSingleVideo(job);
+    }, index * 300);
+  });
+}
+
+async function handleBatchDelete() {
+  if (!selectedJobIds.size) return;
+  const ids = Array.from(selectedJobIds);
+  const count = ids.length;
+
+  const currentJobs = AppState.currentJobs || [];
+  const runningSelected = currentJobs.filter(j => selectedJobIds.has(j.id) && j.status === 'Đang chạy');
+  const runningWarning = runningSelected.length > 0
+    ? `\nLưu ý: Có ${runningSelected.length} job đang chạy sẽ bị dừng lại.`
+    : '';
+
+  const confirmMsg = count === 1
+    ? `Bạn có chắc chắn muốn xóa record ${ids[0]} không?${runningWarning}`
+    : `Bạn có chắc chắn muốn xóa ${count} record đã chọn không?${runningWarning}`;
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch('/api/queue/batch-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_ids: ids })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Lỗi xóa các record');
+    }
+    showToast(`Đã xóa thành công ${data.deletedCount} record`, 'success');
+    selectedJobIds.clear();
+    await loadJobs();
+  } catch (e) {
+    showToast('Lỗi xóa: ' + e.message, 'error');
+  }
+}
+
+
 let jobsLoadRequest = 0;
 async function loadJobs() {
   const request = ++jobsLoadRequest;
@@ -761,9 +947,21 @@ async function loadJobs() {
     const data = await fetchAllJobs(AppState.statusFilter, AppState.searchQuery);
     if (request !== jobsLoadRequest) return;
 
+    AppState.allLoadedJobs = data.jobs || [];
+    AppState.currentJobs = data.jobs || [];
+
+    // Clean up IDs that no longer exist
+    const currentIdSet = new Set((data.jobs || []).map(j => j.id));
+    for (const id of Array.from(selectedJobIds)) {
+      if (!currentIdSet.has(id)) {
+        selectedJobIds.delete(id);
+      }
+    }
+
     renderFilterCounters(data.counts);
     document.getElementById('txtRecordsTotal').textContent = `${data.total} record`;
     renderVideoRows(data.jobs);
+    updateBatchActionBar();
   } catch (e) {
     if (request === jobsLoadRequest) showToast(e.message, 'error');
     console.error('Lỗi tải danh sách job:', e);
@@ -845,8 +1043,19 @@ function renderVideoRows(jobs) {
       'Đã dừng': 'da-dung'
     }[job.status] || 'cho';
 
+    const isSelected = selectedJobIds.has(job.id);
+
     return `
-      <div class="video-row" id="row_${job.id}">
+      <div class="video-row ${isSelected ? 'selected-row' : ''}" id="row_${job.id}">
+        <!-- Checkbox chọn record -->
+        <div class="row-checkbox-wrapper flex items-center justify-center flex-shrink-0" onclick="event.stopPropagation()">
+          <input type="checkbox" class="job-row-checkbox custom-checkbox"
+            data-job-id="${job.id}"
+            ${isSelected ? 'checked' : ''}
+            onchange="onJobCheckboxChange(event, '${job.id}')"
+            title="Chọn record ${job.id}">
+        </div>
+
         <!-- Thumbnail / Player nhúng (Mục 6.3 & 6.5 & AC-07) -->
         <div class="video-thumbnail-box" onclick="toggleRowPlayer(event, '${job.id}')">
           ${job.status === 'Hoàn thành' && job.videoUrl ? `
@@ -1006,6 +1215,7 @@ async function deleteJob(e, jobId) {
   e.stopPropagation();
   try {
     await fetch(`/api/queue/jobs/${jobId}`, { method: 'DELETE' });
+    selectedJobIds.delete(jobId);
     loadJobs();
   } catch (e) {
     showToast('Lỗi xóa: ' + e.message, 'error');

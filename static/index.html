@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Muse ai tool — Tool Tạo Video AI Hàng Loạt</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/styles.css?v=1.0.25">
+  <link rel="stylesheet" href="/styles.css?v=1.0.31">
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col pb-14">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col pb-4">
 
   <!-- =========================================================================
        APP HEADER & KHO ẢNH THAM CHIẾU CỐ ĐỊNH (Mục 2.1 & Mục 3.1)
@@ -218,6 +218,33 @@
           </button>
         </div>
 
+        <!-- Thanh chọn nhiều & Thao tác hàng loạt (Batch Actions Bar) -->
+        <div id="batchActionBar" class="batch-action-bar flex items-center justify-between py-2 px-3 border-b border-slate-800 bg-slate-900/60 text-xs">
+          <div class="flex items-center gap-2.5">
+            <label class="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-white font-medium" title="Chọn/bỏ chọn tất cả các record đang hiển thị">
+              <input type="checkbox" id="chkSelectAll" class="custom-checkbox" onchange="toggleSelectAll(this.checked)">
+              <span id="lblSelectAll">Chọn tất cả</span>
+            </label>
+            <span class="text-slate-600">|</span>
+            <span id="txtSelectionCount" class="text-slate-400">Đã chọn: <b id="valSelectedCount" class="text-indigo-400 font-mono">0</b></span>
+            <button id="btnClearSelection" onclick="clearSelection()" class="text-slate-500 hover:text-slate-300 text-[11px] underline hidden" title="Bỏ chọn các record">
+              Bỏ chọn
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <!-- Nút Tải về đã chọn / Tải tất cả (tải trực tiếp từng file MP4) -->
+            <button id="btnBatchDownload" onclick="handleBatchDownload()" class="btn-primary text-xs py-1 px-3 bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center gap-1.5 opacity-50 cursor-not-allowed" disabled title="Tải về từng file video MP4 của các record đã chọn">
+              <span>⬇</span> <span id="txtBatchDownloadLabel">Tải về (0)</span>
+            </button>
+
+            <!-- Nút Xóa đã chọn / Xóa tất cả -->
+            <button id="btnBatchDelete" onclick="handleBatchDelete()" class="btn-secondary text-xs py-1 px-3 text-red-400 hover:text-red-300 hover:border-red-500/50 flex items-center gap-1.5 opacity-50 cursor-not-allowed" disabled title="Xóa các record đã chọn (hoặc tất cả)">
+              <span>🗑️</span> <span id="txtBatchDeleteLabel">Xóa (0)</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Danh sách video: mỗi dòng đúng 1 hàng (Mục 6.3 & AC-07, AC-10) -->
         <div id="recordsScroll" class="records-scroll" tabindex="0" aria-label="Cuộn danh sách video">
       <div id="liveRunningStrip" class="running-strip hidden">
@@ -386,7 +413,7 @@
 
   
   <!-- Live Activity Log Drawer (Nhật ký hoạt động thời gian thực) -->
-  <footer id="liveLogDrawer" class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 text-xs shadow-2xl transition-all duration-300">
+  <footer id="liveLogDrawer" class="hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 text-xs shadow-2xl transition-all duration-300">
     <div class="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/60 transition-colors" onclick="toggleLogDrawer()">
       <div class="flex items-center gap-2 overflow-hidden mr-4">
         <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
@@ -407,6 +434,6 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="/app.js?v=1.0.27"></script>
+  <script src="/app.js?v=1.0.31"></script>
 </body>
 </html>

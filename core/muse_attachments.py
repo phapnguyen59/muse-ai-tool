@@ -30,7 +30,7 @@ async def attach_reference_images(send_cmd, is_cancelled, paths, editor_js, job_
     setup_js = r"""(() => {
         const editor = EDITOR;
         if (!editor) return 'no-editor';
-        const visible = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+        const visible = el => (el.getClientRects().length > 0 || (getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).opacity !== '0'));
         let scope = editor.closest('form, [data-testid="hatch-chat-composer"]') || editor.parentElement;
         for (let i = 0; i < 4 && scope.parentElement && !scope.querySelector('input[type="file"]'); i++) {
             if (scope.parentElement === document.body) break;

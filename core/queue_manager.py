@@ -116,8 +116,19 @@ class VideoJob:
         return max(0, int(end_time - self.started_at))
 
     def to_dict(self) -> Dict[str, Any]:
+        acc_id = self.assigned_account_id or self.account_id
+        acc_name = ''
+        if acc_id:
+            try:
+                from core.account_pool import account_pool
+                acc_obj = account_pool.accounts.get(acc_id)
+                acc_name = (acc_obj.identifier if acc_obj else '') or acc_id
+            except Exception:
+                acc_name = acc_id
+
         return {
             "threadId": self.thread_id,
+            "accountName": acc_name,
             "threadUrl": f"https://muse.ai/thread/{self.thread_id}" if self.thread_id else "",
             "tabId": self.tab_id,
             "submitted": self.submitted,
@@ -353,6 +364,17 @@ class QueueManager:
             self.save()
             return True
         return False
+
+    def delete_jobs(self, job_ids: list[str]) -> list[str]:
+        """Xóa nhiều job cùng lúc khỏi danh sách và lưu một lần."""
+        deleted = []
+        for jid in job_ids:
+            if jid in self.jobs:
+                self.jobs.pop(jid)
+                deleted.append(jid)
+        if deleted:
+            self.save()
+        return deleted
 
     def clear_finished(self) -> int:
         """Dọn toàn bộ job đã hoàn thành khỏi danh sách hiển thị (Mục 6.2)."""

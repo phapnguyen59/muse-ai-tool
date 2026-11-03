@@ -182,6 +182,7 @@ class Dispatcher:
 
                 task = asyncio.create_task(self._run_job_lifecycle(job, acc.id))
                 self.active_tasks[job.id] = task
+                await asyncio.sleep(0.2)
 
             await asyncio.sleep(0.5)
 

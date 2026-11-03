@@ -53,6 +53,8 @@ class Account:
     def to_dict(self, include_credential: bool = False) -> Dict[str, Any]:
         data = {
             "id": self.id,
+            "name": self.identifier,
+            "identifier": self.identifier,
             "masked_identifier": mask_identifier(self.identifier),
             "enabled": self.enabled,
             "status": self.status,

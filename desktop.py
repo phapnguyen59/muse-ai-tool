@@ -45,7 +45,7 @@ def get_version(base_dir: str) -> str:
                 return f.read().strip()
         except Exception:
             pass
-    return "1.0.2"
+    return "1.0.8"
 
 
 def get_local_ip() -> str:
@@ -335,6 +335,29 @@ class ServerApp(tk.Tk):
     def clear_logs(self):
         self.log_text.delete("1.0", tk.END)
 
+    def _start_log_poller(self):
+        try:
+            from core.paths import ACTIVITY_LOG_FILE
+            if ACTIVITY_LOG_FILE.is_file():
+                with open(ACTIVITY_LOG_FILE, "r", encoding="utf-8") as f:
+                    items = json.load(f)
+                if isinstance(items, list):
+                    if self.last_log_id == 0 and items:
+                        self.last_log_id = items[-1].get("id", 0)
+                    else:
+                        for item in items:
+                            item_id = item.get("id", 0)
+                            if item_id > self.last_log_id:
+                                self.last_log_id = item_id
+                                msg = item.get("message", "")
+                                job_id = item.get("jobId", "")
+                                prefix = f"[{job_id}] " if job_id else ""
+                                self.log(f"[Muse] {prefix}{msg}")
+        except Exception:
+            pass
+        if not self.is_shutting_down:
+            self.after(1000, self._start_log_poller)
+
     def set_status(self, text: str, state: str = "warning"):
         colors = {
             "online": ("#10b981", "#10b981", "🟢"),
@@ -517,6 +540,11 @@ class ServerApp(tk.Tk):
 
     def on_closing(self):
         self.is_shutting_down = True
+        try:
+            from core.muse_driver import cleanup_all_sessions
+            cleanup_all_sessions()
+        except Exception:
+            pass
         self._stop_server_process()
         kill_process_on_port(PORT)
         self.destroy()

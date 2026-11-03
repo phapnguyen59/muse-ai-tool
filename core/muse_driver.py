@@ -15,6 +15,7 @@ Muse AI Real CDP Driver — Điều khiển Google Chrome headless để tạo v
 from __future__ import annotations
 
 import asyncio
+import atexit
 
 import base64
 
@@ -157,44 +158,44 @@ from core.paths import DATA_DIR, MEDIA_DIR, PROFILES_DIR
 # Stable attributes from the supplied Muse compose button; CSS classes vary.
 
 COMPOSE_SELECTOR = ('button[data-testid="hatch-chat-compose"], '
-
+                    'button[aria-label="New chat"], '
+                    'button[title="New chat"], '
+                    'button[aria-label="New subchat"], '
+                    'button[title="New subchat"], '
                     'button[aria-label="\u0110o\u1ea1n chat ph\u1ee5 m\u1edbi"], '
-
                     'button[title="\u0110o\u1ea1n chat ph\u1ee5 m\u1edbi"]')
 
 EDITOR_JS = """(() => {
-
+    const isVisible = (el) => {
+        if (!el) return false;
+        if (el.getClientRects().length > 0) return true;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    };
     const selectors = [
-
         'textarea[data-hatch-composer-prehydration-input="true"]',
-
+        'textarea[aria-label="Message"]',
+        'textarea[placeholder="Message"]',
         'textarea[aria-label="Nh\\u1eafn tin"]',
-
         'textarea[placeholder="Nh\\u1eafn tin"]',
-
         'textarea:not(:disabled)', '[contenteditable="true"]'
-
     ];
-
     for (const selector of selectors) {
-
         const editor = [...document.querySelectorAll(selector)].find(el =>
-
-            el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden'
-
-            && !el.disabled && !el.readOnly && el.getAttribute('aria-disabled') !== 'true');
-
+            isVisible(el) && !el.disabled && !el.readOnly && el.getAttribute('aria-disabled') !== 'true');
         if (editor) return editor;
-
     }
-
     return null;
-
 })()"""
 
 async def enter_prompt(send_cmd, is_cancelled, prompt, job_id=''):
 
     """Type through Chrome's input path and verify after possible hydration."""
+
+    try:
+        await send_cmd('Page.bringToFront')
+    except Exception:
+        pass
 
     for attempt in range(3):
 
@@ -260,11 +261,23 @@ async def open_new_thread(send_cmd, is_cancelled, job_id=''):
 
     """Click Muse's compose button; navigate directly only when it is absent."""
 
+    try:
+        await send_cmd('Page.bringToFront')
+    except Exception:
+        pass
+
     click_js = """(() => {
+
+        const isVisible = (b) => {
+            if (!b) return false;
+            if (b.getClientRects().length > 0) return true;
+            const style = window.getComputedStyle(b);
+            return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+        };
 
         const buttons = [...document.querySelectorAll(COMPOSE_SELECTOR_VALUE)]
 
-            .filter(b => b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden');
+            .filter(b => isVisible(b));
 
         if (!buttons.length) return 'missing';
 
@@ -323,10 +336,13 @@ async def open_new_thread(send_cmd, is_cancelled, job_id=''):
     last_page = {}
 
     for attempt in range(120):
-
         if is_cancelled():
-
             raise asyncio.CancelledError()
+        if attempt % 5 == 0:
+            try:
+                await send_cmd('Page.bringToFront')
+            except Exception:
+                pass
 
         result = await send_cmd('Runtime.evaluate', {
 
@@ -496,7 +512,7 @@ async def prepare_new_thread(send_cmd, is_cancelled, job_id=''):
 
     await send_cmd('Page.navigate', {'url': 'https://muse.ai/'})
 
-    for _ in range(24):
+    for attempt in range(24):
 
         if is_cancelled():
 
@@ -517,6 +533,10 @@ async def prepare_new_thread(send_cmd, is_cancelled, job_id=''):
             raise RuntimeError('Muse login expired; update cookies')
 
         if page.get('origin') == 'https://muse.ai' and page.get('ready') != 'loading' and page.get('compose'):
+
+            break
+
+        if page.get('ready') == 'complete' and attempt >= 4:
 
             break
 
@@ -563,6 +583,106 @@ def format_muse_video_prompt(user_prompt: str, duration: int = 15, ratio: str = 
     else:
 
         return f"Brand new text-to-video creation: Generate a 1:1 square video (duration strictly {duration} seconds): {p}"
+
+
+_job_object = None
+
+def _get_or_create_job_object():
+    global _job_object
+    if sys.platform != 'win32':
+        return None
+    if _job_object is not None:
+        return _job_object
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION = 9
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [('ReadOperationCount', ctypes.c_uint64),
+                        ('WriteOperationCount', ctypes.c_uint64),
+                        ('OtherOperationCount', ctypes.c_uint64),
+                        ('ReadTransferCount', ctypes.c_uint64),
+                        ('WriteTransferCount', ctypes.c_uint64),
+                        ('OtherTransferCount', ctypes.c_uint64)]
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [('PerProcessUserTimeLimit', ctypes.c_int64),
+                        ('PerJobUserTimeLimit', ctypes.c_int64),
+                        ('LimitFlags', wintypes.DWORD),
+                        ('MinimumWorkingSetSize', ctypes.c_size_t),
+                        ('MaximumWorkingSetSize', ctypes.c_size_t),
+                        ('ActiveProcessLimit', wintypes.DWORD),
+                        ('Affinity', ctypes.c_size_t),
+                        ('PriorityClass', wintypes.DWORD),
+                        ('SchedulingClass', wintypes.DWORD)]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFO(ctypes.Structure):
+            _fields_ = [('BasicLimitInformation', JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                        ('IoCounters', IO_COUNTERS),
+                        ('ProcessMemoryLimit', ctypes.c_size_t),
+                        ('JobMemoryLimit', ctypes.c_size_t),
+                        ('PeakProcessMemoryLimit', ctypes.c_size_t),
+                        ('PeakJobMemoryLimit', ctypes.c_size_t)]
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if job:
+            info = JOBOBJECT_EXTENDED_LIMIT_INFO()
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            kernel32.SetInformationJobObject(
+                job,
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+                ctypes.byref(info),
+                ctypes.sizeof(info)
+            )
+            _job_object = job
+    except Exception as e:
+        log.warning("Could not configure Windows Job Object for Chrome: %s", e)
+    return _job_object
+
+def _assign_to_job_object(pid: int):
+    job = _get_or_create_job_object()
+    if not job or sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_ALL_ACCESS = 0x1F0FFF
+        h_process = kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, pid)
+        if h_process:
+            try:
+                kernel32.AssignProcessToJobObject(job, h_process)
+            finally:
+                kernel32.CloseHandle(h_process)
+    except Exception as e:
+        log.debug("AssignProcessToJobObject failed for PID %s: %s", pid, e)
+
+def clean_profile_orphans(profile_dir: Path):
+    """Tìm và dừng các tiến trình Chrome/Edge mồ côi đang khóa thư mục profile."""
+    target_str = str(profile_dir.resolve()).lower()
+    try:
+        import psutil
+        for p in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                name = (p.info['name'] or '').lower()
+                if 'chrome' in name or 'msedge' in name:
+                    cmdline = p.info['cmdline'] or []
+                    if any(target_str in arg.lower() for arg in cmdline):
+                        p.kill()
+            except Exception:
+                pass
+    except Exception as e:
+        log.debug("psutil orphan cleanup error: %s", e)
+
+    for lock_name in ('lockfile', 'SingletonLock', 'SingletonCookie', 'SingletonSocket'):
+        f = profile_dir / lock_name
+        if f.exists():
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 class MuseCDPSession:
 
@@ -614,101 +734,91 @@ class MuseCDPSession:
 
         return cookies
 
+    def is_browser_alive(self) -> bool:
+        if not self.proc or self.proc.poll() is not None:
+            return False
+        if not self.port:
+            return False
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/version", timeout=1) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
     def start_browser(self):
-
         with self._browser_lock:
-
             self._start_browser()
 
     def _start_browser(self):
-
-        if self.proc and self.proc.poll() is None:
-
+        if self.is_browser_alive():
             return
+        if self.proc:
+            self.stop_browser()
+
+        clean_profile_orphans(self.profile_dir)
 
         self.port = get_free_port()
-
         chrome_exe = find_chrome_path() or CHROME_PATH
-
         if not os.path.isfile(chrome_exe):
-
             raise RuntimeError(
-
                 "Không tìm thấy Google Chrome hoặc Edge trên máy tính của bạn.\n"
-
                 "Vui lòng cài đặt Google Chrome tại https://www.google.com/chrome/ để Muse AI Tool có thể hoạt động."
-
             )
-
         cmd = [
-
             chrome_exe,
-
             f"--remote-debugging-port={self.port}",
-
             "--headless=new",
-
             "--no-first-run",
-
             "--no-default-browser-check",
-
             "--disable-gpu",
-
             "--disable-background-networking",
-
             "--disable-background-timer-throttling",
-
             "--disable-renderer-backgrounding",
-
             "--disable-backgrounding-occluded-windows",
-
             "--disable-sync",
-
             f"--user-data-dir={self.profile_dir}",
-
         ]
-
         self.proc = subprocess.Popen(cmd)
+        _assign_to_job_object(self.proc.pid)
 
         # Chờ Chrome sẵn sàng lắng nghe CDP
-
-        for _ in range(15):
-
-            time.sleep(0.3)
-
+        ready = False
+        for _ in range(30):
+            if self.proc.poll() is not None:
+                break
             try:
-
                 with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/version", timeout=1) as r:
-
                     if r.status == 200:
-
+                        ready = True
                         break
-
             except Exception:
-
                 pass
+            time.sleep(0.5)
+
+        if not ready:
+            err_code = self.proc.poll()
+            self.stop_browser()
+            raise RuntimeError(
+                f"Chrome không thể khởi động hoặc không phản hồi cổng CDP {self.port} "
+                f"(mã thoát: {err_code}). Vui lòng kiểm tra quyền truy cập hoặc khởi động lại máy."
+            )
 
     def stop_browser(self):
-
         if self.proc:
-
+            pid = self.proc.pid
             try:
-
-                self.proc.terminate()
-
-                self.proc.wait(timeout=3)
-
+                if sys.platform == 'win32':
+                    subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True, timeout=5)
+                else:
+                    self.proc.terminate()
+                    self.proc.wait(timeout=3)
             except Exception:
-
                 try:
-
                     self.proc.kill()
-
                 except Exception:
-
                     pass
-
             self.proc = None
+        clean_profile_orphans(self.profile_dir)
 
     async def generate_video(
 
@@ -751,26 +861,35 @@ class MuseCDPSession:
         on_progress(5)
 
         def get_tab():
-
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json", timeout=5) as response:
-
-                tabs = json.loads(response.read().decode())
+            tabs = None
+            last_err = None
+            for attempt in range(5):
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json", timeout=5) as response:
+                        tabs = json.loads(response.read().decode())
+                    break
+                except Exception as e:
+                    last_err = e
+                    time.sleep(1)
+            if tabs is None:
+                raise RuntimeError(f"Không thể kết nối danh sách tab của Chrome ({last_err})")
 
             existing = next((tab for tab in tabs if job.tab_id and tab.get('id') == job.tab_id), None)
-
             if existing:
-
                 return existing
 
             if job.submitted and not job.thread_id:
-
                 raise RuntimeError("Submitted tab is unavailable and thread ID is unknown; refusing to resubmit")
 
             request = urllib.request.Request(f"http://127.0.0.1:{self.port}/json/new?about:blank", method="PUT")
-
-            with urllib.request.urlopen(request, timeout=5) as response:
-
-                return json.loads(response.read().decode())
+            for attempt in range(5):
+                try:
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        return json.loads(response.read().decode())
+                except Exception as e:
+                    last_err = e
+                    time.sleep(1)
+            raise RuntimeError(f"Không thể mở tab mới trên Chrome ({last_err})")
 
         tab = await asyncio.to_thread(get_tab)
 
@@ -837,23 +956,21 @@ class MuseCDPSession:
                 queue_manager.save()
 
                 click_js = """(() => {
-
+                    const isVisible = (b) => {
+                        if (!b) return false;
+                        if (b.getClientRects().length > 0) return true;
+                        const style = window.getComputedStyle(b);
+                        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                    };
                     const ta = EDITOR_EXPRESSION;
-
                     const scope = ta?.closest('form') || ta?.closest('div[class*="rounded"]') || ta?.parentElement?.parentElement;
-
                     const buttons = [...(scope || document).querySelectorAll('button')];
-
-                    const button = buttons.find(b => /^(send|send message|gửi|gửi tin nhắn)$/i.test(b.getAttribute('aria-label') || ''))
-
-                        || scope?.querySelector('button[type="submit"]');
-
+                    const button = buttons.find(b => /^(send|send message|gửi|gửi tin nhắn)$/i.test(b.getAttribute('aria-label') || '') || /^(send|send message|gửi|gửi tin nhắn)$/i.test(b.getAttribute('title') || ''))
+                        || scope?.querySelector('button[type="submit"]')
+                        || buttons.find(b => b.querySelector('svg') && isVisible(b) && !b.disabled);
                     if (!button || button.disabled) return false;
-
                     button.click();
-
                     return true;
-
                 })()""".replace("EDITOR_EXPRESSION", EDITOR_JS)
 
                 try:
@@ -912,7 +1029,7 @@ class MuseCDPSession:
 
                     raise RuntimeError('Muse login expired while tracking the thread')
 
-                thread_id = thread_id_from_url(url)
+                thread_id = thread_id_from_url(url) or snapshot.get('detectedThreadId', '')
 
                 if thread_id:
 
@@ -926,27 +1043,47 @@ class MuseCDPSession:
 
                         queue_manager.save()
 
-                if job.thread_id and thread_id == job.thread_id:
+                # Quét và nhận diện video ngay khi xuất hiện trong DOM hoặc thread khớp
+                if snapshot.get('src') or (job.thread_id and thread_id == job.thread_id):
 
                     new_video_src = tracker.observe(snapshot)
 
                     if new_video_src:
 
-                        record('Đã tìm thấy video ổn định trong thread', job_id)
+                        record('✓ Đã tìm thấy video ổn định trong thread', job_id)
 
                         break
 
-                if job.thread_id and not snapshot.get('src') and not snapshot.get('busy') and time.monotonic() - last_refresh >= 120:
+                # TỰ ĐỘNG LÀM MỚI CHỦ ĐỘNG:
+                # Nếu chưa thấy video và đã quá 20s kể từ lần tải trước, chủ động reload thread
+                # để đồng bộ dữ liệu mới nhất từ server Muse (khắc phục hoàn toàn tình trạng treo WebSocket)
+                if not snapshot.get('src') and (time.monotonic() - last_refresh >= 20):
 
-                    record('Làm mới thread cũ để đồng bộ kết quả; không gửi lại prompt', job_id)
+                    elapsed_total = int(time.monotonic() - wait_start)
 
-                    await open_existing_thread(send_cmd, is_cancelled, job.thread_id, job_id)
+                    if job.thread_id:
+
+                        record(f'Tác vụ [{job_id}]: Đang làm mới trang thread để đồng bộ video từ Muse AI... (đã chờ {elapsed_total}s)', job_id)
+
+                        target_url = f'https://muse.ai/thread/{job.thread_id}'
+
+                        await send_cmd('Page.navigate', {'url': target_url})
+
+                    else:
+
+                        record(f'Tác vụ [{job_id}]: Đang tải lại trang để kiểm tra kết quả từ Muse AI... (đã chờ {elapsed_total}s)', job_id)
+
+                        await send_cmd('Page.reload', {'ignoreCache': True})
 
                     tracker = ResponseTracker()
 
                     last_refresh = time.monotonic()
 
-                await asyncio.sleep(3)
+                    await asyncio.sleep(2.0)
+
+                    continue
+
+                await asyncio.sleep(2)
 
             on_progress(90)
 
@@ -1016,7 +1153,29 @@ class MuseCDPSession:
 
                 if new_video_src.startswith("http"):
 
-                    await asyncio.to_thread(urllib.request.urlretrieve, new_video_src, str(target_vid_path))
+                    def _download_http_video(url, path):
+                        req = urllib.request.Request(
+                            url,
+                            headers={
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+                                "Accept": "*/*",
+                                "Referer": "https://muse.ai/",
+                            }
+                        )
+                        dl_err = None
+                        for attempt in range(3):
+                            try:
+                                with urllib.request.urlopen(req, timeout=30) as resp, open(path, "wb") as f_out:
+                                    shutil.copyfileobj(resp, f_out)
+                                dl_err = None
+                                break
+                            except Exception as ex:
+                                dl_err = ex
+                                time.sleep(1.5)
+                        if dl_err is not None:
+                            raise RuntimeError(f"Lỗi tải video từ server Muse ({dl_err}). Vui lòng bấm Thử lại.")
+
+                    await asyncio.to_thread(_download_http_video, new_video_src, str(target_vid_path))
 
                 else:
 
@@ -1201,19 +1360,38 @@ class MuseCDPSession:
             }
 
         finally:
-
             await connection.close()
+            if job.status == "Hoàn thành" and job.tab_id and self.port:
+                try:
+                    req = urllib.request.Request(f"http://127.0.0.1:{self.port}/json/close/{job.tab_id}", method="PUT")
+                    with urllib.request.urlopen(req, timeout=3):
+                        pass
+                except Exception:
+                    pass
 
 _sessions: Dict[str, MuseCDPSession] = {}
 
 def get_muse_session(account_id: str, cookie_header: str) -> MuseCDPSession:
-
     if account_id not in _sessions:
-
         _sessions[account_id] = MuseCDPSession(account_id, cookie_header)
-
     else:
-
         _sessions[account_id].cookie_header = cookie_header
-
     return _sessions[account_id]
+
+def cleanup_all_sessions():
+    """Dọn dẹp và dừng tất cả các phiên Chrome khi ứng dụng thoát."""
+    for session in list(_sessions.values()):
+        try:
+            session.stop_browser()
+        except Exception:
+            pass
+    try:
+        if PROFILES_DIR.exists():
+            for p_dir in PROFILES_DIR.iterdir():
+                if p_dir.is_dir():
+                    clean_profile_orphans(p_dir)
+    except Exception:
+        pass
+
+atexit.register(cleanup_all_sessions)
+

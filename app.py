@@ -38,7 +38,7 @@ from fastapi import FastAPI, Request, File, HTTPException, Query, UploadFile, st
 
 from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from fastapi.staticfiles import StaticFiles
 
@@ -163,6 +163,10 @@ async def log_requests(request: Request, call_next):
         status_code = response.status_code
         lvl = "error" if status_code >= 500 else ("warning" if status_code >= 400 else "info")
         record(f"[API] {method} {path} -> {status_code} ({duration:.2f}s)", level=lvl)
+    if path == "/" or path.endswith((".html", ".js", ".css")):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 
@@ -274,6 +278,14 @@ def api_account_health(account_id: str):
 # 8.2 Queue — Hàng đợi job
 
 # =========================================================================
+
+class BatchDeleteRequest(BaseModel):
+    job_ids: List[str] = Field(..., description="Danh sách Job ID cần xóa")
+
+
+class BatchDownloadRequest(BaseModel):
+    job_ids: List[str] = Field(..., description="Danh sách Job ID cần tải về")
+
 
 class EnqueueBatchRequest(BaseModel):
 
@@ -474,6 +486,77 @@ def api_delete_job(job_id: str):
     account_pool.save()
 
     return {"ok": True, "id": job_id}
+
+
+
+def _create_batch_download_response(job_ids: List[str]):
+    if not job_ids:
+        raise HTTPException(status_code=400, detail="Danh sách ID trống")
+    video_files = []
+    for jid in job_ids:
+        f = MEDIA_DIR / f"{jid}.mp4"
+        if f.exists() and f.is_file() and f.stat().st_size > 0:
+            video_files.append((jid, f))
+    if not video_files:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file video hoàn thành nào để tải về")
+    if len(video_files) == 1:
+        single_id, single_path = video_files[0]
+        return FileResponse(
+            path=str(single_path),
+            media_type="video/mp4",
+            filename=f"{single_id}.mp4"
+        )
+    import io, zipfile, datetime
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for jid, f_path in video_files:
+            zf.write(f_path, arcname=f"{jid}.mp4")
+    buf.seek(0)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    zip_filename = f"muse_videos_{timestamp}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'}
+    )
+
+
+@app.post("/api/queue/batch-delete", tags=["Queue"])
+def api_batch_delete(req: BatchDeleteRequest):
+    """Xóa nhiều job cùng lúc khỏi danh sách và dọn dẹp tài nguyên."""
+    for job_id in req.job_ids:
+        if job_id in dispatcher.active_tasks:
+            task = dispatcher.active_tasks.pop(job_id)
+            if hasattr(task, 'done') and not task.done():
+                task.cancel()
+        job = queue_manager.get_job(job_id)
+        if job and job.account_id:
+            acc = account_pool.accounts.get(job.account_id)
+            if acc and acc.active_jobs > 0:
+                acc.active_jobs -= 1
+        for ext in ('.mp4', '_thumb.jpg', '_thumb.svg'):
+            f = MEDIA_DIR / f"{job_id}{ext}"
+            if f.exists():
+                try:
+                    f.unlink(missing_ok=True)
+                except Exception:
+                    pass
+    deleted_ids = queue_manager.delete_jobs(req.job_ids)
+    account_pool.save()
+    return {"ok": True, "deletedCount": len(deleted_ids), "deletedIds": deleted_ids}
+
+
+@app.get("/api/queue/batch-download", tags=["Queue"])
+def api_batch_download_get(ids: str = Query(..., description="Danh sách job ID phân cách bằng dấu phẩy")):
+    """Tải nhiều video (hoặc 1 video) qua liên kết GET."""
+    job_ids = [x.strip() for x in ids.split(",") if x.strip()]
+    return _create_batch_download_response(job_ids)
+
+
+@app.post("/api/queue/batch-download", tags=["Queue"])
+def api_batch_download_post(req: BatchDownloadRequest):
+    """Tải nhiều video qua yêu cầu POST."""
+    return _create_batch_download_response(req.job_ids)
 
 
 @app.post("/api/queue/clear-finished", tags=["Queue"])
