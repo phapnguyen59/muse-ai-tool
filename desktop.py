@@ -45,7 +45,7 @@ def get_version(base_dir: str) -> str:
                 return f.read().strip()
         except Exception:
             pass
-    return "1.0.8"
+    return "1.0.9"
 
 
 def get_local_ip() -> str:

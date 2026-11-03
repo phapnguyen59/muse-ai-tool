@@ -1027,6 +1027,24 @@ async function copyThreadId(event, threadId) {
   }
 }
 
+function getAccountDisplayName(job) {
+  if (job.accountName && job.accountName.trim() && !job.accountName.startsWith('acc_')) {
+    return job.accountName;
+  }
+  const accId = job.assignedAccountId || job.accountId || '';
+  if (accId) {
+    const acc = (AppState.accounts || []).find(a => a.id === accId);
+    if (acc) {
+      return acc.name || acc.identifier || acc.masked_identifier || acc.id;
+    }
+    if (job.accountName && job.accountName.trim()) {
+      return job.accountName;
+    }
+    return accId;
+  }
+  return 'Chưa gán';
+}
+
 function renderVideoRows(jobs) {
   const container = document.getElementById('videoRowsContainer');
   if (!jobs || !jobs.length) {
@@ -1044,6 +1062,7 @@ function renderVideoRows(jobs) {
     }[job.status] || 'cho';
 
     const isSelected = selectedJobIds.has(job.id);
+    const accName = getAccountDisplayName(job);
 
     return `
       <div class="video-row ${isSelected ? 'selected-row' : ''}" id="row_${job.id}">
@@ -1056,7 +1075,7 @@ function renderVideoRows(jobs) {
             title="Chọn record ${job.id}">
         </div>
 
-        <!-- Thumbnail / Player nhúng (Mục 6.3 & 6.5 & AC-07) -->
+        <!-- Thumbnail / Player nhúng -->
         <div class="video-thumbnail-box" onclick="toggleRowPlayer(event, '${job.id}')">
           ${job.status === 'Hoàn thành' && job.videoUrl ? `
             <img src="${job.thumbnailUrl || '/api/media/' + job.id + '_thumb.svg'}" alt="Thumb" class="row-thumb-img">
@@ -1068,52 +1087,92 @@ function renderVideoRows(jobs) {
           `}
         </div>
 
-        <!-- Nội dung chính rút gọn 1 dòng (Mục 6.3 & AC-10) -->
+        <!-- Nội dung chính rút gọn 1 dòng -->
         <div class="flex-1 min-w-0" onclick="toggleRowExpand('${job.id}')">
           <div class="flex items-center gap-2">
             <span class="text-xs font-bold text-slate-200 truncate font-sans">${escapeHtml(job.prompt)}</span>
           </div>
-          <div class="flex items-center gap-3 text-[11px] text-slate-500 font-mono mt-0.5">
-            <span>${job.id}</span>
-            <span>${escapeHtml(job.assignedAccountId || job.accountId || '')}</span>
-            ${job.threadId ? `<a href="https://muse.ai/thread/${encodeURIComponent(job.threadId)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Thread: ${escapeHtml(job.threadId)}</a><button type="button" class="copy-thread-btn" data-thread-id="${escapeHtml(job.threadId)}" onclick="copyThreadId(event, this.dataset.threadId)" title="Copy ID thread" aria-label="Copy ID thread">Copy ID</button>` : ''}
-            <span>·</span>
-            <span>${job.duration}s · ${job.ratio}</span>
-            ${job.refTags && job.refTags.length ? `
-              <span>·</span>
-              <span class="text-indigo-400">@${job.refTags.join(', @')}</span>
-            ` : ''}
-            ${job.status === 'Đang chạy' ? `<span class="text-sky-400 font-bold">(${job.elapsedSec}s)</span>` : ''}
+
+          <!-- 2 Cột thông tin: Cột 1 (Tên acc + Task ID), Cột 2 (Thread copy + Thời gian + Khung hình) -->
+          <div class="flex items-center gap-3.5 text-xs font-mono mt-1 text-slate-400">
+            <!-- Cột 1: Tên tài khoản và taskID nằm chung 1 hàng cột -->
+            <div class="flex flex-col justify-center min-w-[100px] max-w-[140px] flex-shrink-0">
+              <div class="text-xs font-semibold text-indigo-300 flex items-center gap-1 truncate" title="Tài khoản: ${escapeHtml(accName)}">
+                <span class="text-slate-500 text-[11px] font-normal">Acc:</span>
+                <span class="truncate">${escapeHtml(accName)}</span>
+              </div>
+              <div class="text-[10px] text-slate-500 font-mono truncate" title="Task ID: ${job.id}">
+                ${job.id}
+              </div>
+            </div>
+
+            <!-- Đường phân cách nhẹ giữa 2 cột thông tin -->
+            <div class="w-px h-6 bg-slate-800 flex-shrink-0"></div>
+
+            <!-- Cột 2: Thread copy và thời gian + khung hình nằm chung 1 cột -->
+            <div class="flex flex-col justify-center min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 min-w-0">
+                ${job.threadId ? `
+                  <a href="https://muse.ai/thread/${encodeURIComponent(job.threadId)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-[11px] text-sky-400 hover:text-sky-300 hover:underline truncate max-w-[190px]" title="Mở thread Muse: ${escapeHtml(job.threadId)}">
+                    Thread: ${escapeHtml(job.threadId)}
+                  </a>
+                  <button type="button" class="copy-thread-btn text-[10px] py-0.5 px-1.5" data-thread-id="${escapeHtml(job.threadId)}" onclick="copyThreadId(event, this.dataset.threadId)" title="Copy ID thread" aria-label="Copy ID thread">Copy ID</button>
+                ` : '<span class="text-slate-600 text-[11px] italic">Chưa có Thread</span>'}
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                <span class="text-slate-300">${job.duration}s</span>
+                <span class="text-slate-600">·</span>
+                <span class="text-slate-300">${job.ratio}</span>
+                ${job.refTags && job.refTags.length ? `
+                  <span class="text-slate-600">·</span>
+                  <span class="text-indigo-400">@${job.refTags.join(', @')}</span>
+                ` : ''}
+                ${job.status === 'Đang chạy' ? `<span class="text-sky-400 font-bold ml-1">(${job.elapsedSec}s)</span>` : ''}
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Trạng thái & tiến độ % -->
-        <div class="flex items-center gap-3 flex-shrink-0" onclick="toggleRowExpand('${job.id}')">
-          <span class="status-badge ${statusClass}">
+        <!-- Cột Tải & Trạng thái: Tải nằm trên, trạng thái nằm dưới (Yêu cầu A2) -->
+        <div class="flex flex-col items-center justify-center gap-1 flex-shrink-0 min-w-[95px] select-none" onclick="toggleRowExpand('${job.id}')">
+          <!-- Hàng trên: Nút tải hoặc nút hành động -->
+          <div class="w-full flex items-center justify-center" onclick="event.stopPropagation()">
+            ${job.status === 'Hoàn thành' && job.videoUrl ? `
+              <a href="${job.videoUrl}" download="${job.id}.mp4"
+                class="btn-primary text-xs py-1 px-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 font-medium flex items-center justify-center gap-1 w-full text-center shadow-sm hover:brightness-110"
+                title="Tải video MP4 về máy">
+                <span>⬇</span> <span>Tải MP4</span>
+              </a>
+            ` : ''}
+            ${job.status === 'Đang chạy' ? `
+              <button type="button" onclick="rescanThread(event, '${job.id}')"
+                class="btn-secondary text-[10px] py-1 px-1.5 w-full text-center truncate"
+                ${!job.threadId || rescanningJobs.has(job.id) ? 'disabled' : ''}
+                title="Mở lại thread cũ và quét kết quả">
+                ${rescanningJobs.has(job.id) ? 'Đang quét…' : 'Quét thread'}
+              </button>
+            ` : ''}
+            ${['Thất bại', 'Đã dừng'].includes(job.status) ? `
+              <button onclick="retryJob(event, '${job.id}')"
+                class="btn-secondary text-xs py-1 px-2 w-full flex items-center justify-center gap-1 hover:text-sky-300"
+                title="Thử chạy lại job này">
+                <span>🔄</span> <span>Thử lại</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- Hàng dưới: Trạng thái & tiến độ % -->
+          <span class="status-badge ${statusClass} text-[10px] py-0.5 px-2 w-full text-center flex items-center justify-center gap-1">
             ${job.status === 'Đang chạy' ? `<span class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>` : ''}
-            ${job.status} ${job.status === 'Đang chạy' ? `${job.progress}%` : ''}
+            <span>${job.status}</span> ${job.status === 'Đang chạy' ? `<span>${job.progress}%</span>` : ''}
           </span>
         </div>
 
-        <!-- Thao tác: Tải MP4 & Xóa (Mục 6.3) -->
-        <div class="flex items-center gap-2 flex-shrink-0">
-          ${job.status === 'Hoàn thành' && job.videoUrl ? `
-            <a href="${job.videoUrl}" download="${job.id}.mp4" onclick="event.stopPropagation()"
-              class="btn-primary text-xs py-1.5 px-3 bg-gradient-to-r from-emerald-500 to-teal-600">
-              ⬇ Tải MP4
-            </a>
-          ` : ''}
-          ${job.status === 'Đang chạy' ? `
-            <button type="button" onclick="rescanThread(event, '${job.id}')" class="btn-secondary text-xs py-1.5 px-2.5" ${!job.threadId || rescanningJobs.has(job.id) ? 'disabled' : ''} title="Mở lại thread cũ và quét kết quả, không gửi lại prompt">
-              ${rescanningJobs.has(job.id) ? 'Đang quét lại…' : 'Quét lại thread'}
-            </button>
-          ` : ''}
-          ${['Thất bại', 'Đã dừng'].includes(job.status) ? `
-            <button onclick="retryJob(event, '${job.id}')" class="btn-secondary text-xs py-1.5 px-2.5" title="Chạy lại">
-              🔄
-            </button>
-          ` : ''}
-          <button onclick="deleteJob(event, '${job.id}')" class="text-slate-500 hover:text-red-400 text-lg px-1" title="Xóa job">
+        <!-- Cột Xóa: 1 cột riêng ở cuối cùng (Yêu cầu A2) -->
+        <div class="flex items-center justify-center flex-shrink-0 pl-1 border-l border-slate-800/80">
+          <button onclick="deleteJob(event, '${job.id}')"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors text-lg"
+            title="Xóa job">
             &times;
           </button>
         </div>
